@@ -14,6 +14,8 @@ public class PostPaymentRequest implements Serializable {
   private String currency;
   private int amount;
   private int cvv;
+  public PostPaymentRequest(int cardNumberLastFour, int expiryMonth, int expiryYear, String currency, int amount, int cvv) {
+  }
 
   public int getCardNumberLastFour() {
     return cardNumberLastFour;

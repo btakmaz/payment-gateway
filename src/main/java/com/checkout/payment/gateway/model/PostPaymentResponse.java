@@ -12,6 +12,9 @@ public class PostPaymentResponse {
   private String currency;
   private int amount;
 
+  public PostPaymentResponse(int cardNumberLastFour, int expiryMonth, int expiryYear, String currency, int amount, int cvv) {
+  }
+  public PostPaymentResponse(){}
 
   public UUID getId() {
     return id;
