@@ -2,12 +2,14 @@ package com.checkout.payment.gateway.controller;
 
 import com.checkout.payment.gateway.client.model.PostPaymentResponseBuilder;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
+import com.checkout.payment.gateway.model.PostPaymentRequestBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.hasItems;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +18,7 @@ import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.repository.PaymentsRepository;
 import java.util.UUID;
+import com.github.javafaker.Faker;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import io.restassured.RestAssured;
@@ -37,7 +40,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 @SpringBootTest(webEnvironment = RANDOM_PORT)
 @AutoConfigureMockMvc
 class PaymentGatewayControllerTest {
-
+  private static final Faker faker = new Faker();
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   @LocalServerPort
@@ -60,7 +63,69 @@ class PaymentGatewayControllerTest {
   }
 
   @Test
+  void shouldReturn422WhenRequestIsNotValid() throws Exception {
+    given()
+        .contentType(ContentType.JSON)
+        .body(PostPaymentRequestBuilder.builder().build())
+        .when()
+        .post("/payments")
+        .then()
+        .statusCode(422)
+        .body("errors", hasItems(
+            "Card number is required",
+            "CVV is required",
+            "Amount must be greater than 0",
+            "Expiry month must be between 1 and 12",
+            "Currency is required"
+        ));
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(PostPaymentRequestBuilder.builder()
+            .cardNumber("0")
+            .build())
+        .when()
+        .post("/payments")
+        .then()
+        .statusCode(422)
+        .body("errors", hasItems(
+            "Card number must be between 14 and 19 digits"
+        ));
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(PostPaymentRequestBuilder.builder()
+            .cvv("12345")
+            .build())
+        .when()
+        .post("/payments")
+        .then()
+        .statusCode(422)
+        .body("errors", hasItems(
+            "CVV must be 3 or 4 digits"
+        ));
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(PostPaymentRequestBuilder.builder()
+            .currency("FOUR")
+            .build())
+        .when()
+        .post("/payments")
+        .then()
+        .statusCode(422)
+        .body("errors", hasItems(
+            "Currency must be 3 characters"
+        ));
+  }
+
+  @Test
   void shouldCreatePayment() throws Exception {
+    String currency = "EUR";
+    String amount = "10025";
+    String cvv = "123";
+
+
     wireMock.stubFor(
         WireMock.get(urlMatching("/payments"))
             .willReturn(
@@ -78,6 +143,9 @@ class PaymentGatewayControllerTest {
 
     given()
         .contentType(ContentType.JSON)
+        .body(PostPaymentRequestBuilder.builder()
+            .currency(currency)
+            .build())
         .when()
         .post("/payments")
         .then()
@@ -92,12 +160,12 @@ class PaymentGatewayControllerTest {
   @Test
   void whenPaymentIsCreated() throws Exception {
     PostPaymentRequest request = new PostPaymentRequest();
-    request.setCardNumberLastFour(4321);
+    request.setCardNumber("4321");
     request.setExpiryMonth(12);
     request.setExpiryYear(2026);
     request.setCurrency("USD");
     request.setAmount(150);
-    request.setCvv(123);
+    request.setCvv("123");
 
     mvc.perform(MockMvcRequestBuilders.post("/payments")
             .contentType("application/json")

@@ -4,6 +4,9 @@ import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.service.PaymentGatewayService;
 import java.util.UUID;
+import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/payments")
 public class PaymentGatewayController {
+  private static final Logger LOG = LoggerFactory.getLogger(PaymentGatewayController.class);
 
   private final PaymentGatewayService paymentGatewayService;
 
@@ -29,7 +33,8 @@ public class PaymentGatewayController {
   }
 
   @PostMapping
-  public ResponseEntity<PostPaymentResponse> postPayment(@RequestBody PostPaymentRequest request) {
+  public ResponseEntity<PostPaymentResponse> postPayment(@Valid @RequestBody PostPaymentRequest request) {
+    LOG.info("Received payment request {}", request);
     PostPaymentResponse response = paymentGatewayService.processPayment(request);
     return new ResponseEntity<>(response, HttpStatus.CREATED);
   }
