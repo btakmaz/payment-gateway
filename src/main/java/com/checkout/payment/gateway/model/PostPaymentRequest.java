@@ -10,7 +10,6 @@ import lombok.Builder;
 import lombok.Data;
 import java.io.Serializable;
 
-
 @Data
 @Builder
 public class PostPaymentRequest implements Serializable {
@@ -43,69 +42,4 @@ public class PostPaymentRequest implements Serializable {
   @Size(min = 3, max = 4, message = "CVV must be 3 or 4 digits")
   @Pattern(regexp = "\\d+", message = "CVV must only contain numeric characters")
   private String cvv;
-
-//  public String getCardNumber() {
-//    return cardNumber;
-//  }
-//
-//  public void setCardNumber(String cardNumber) {
-//    this.cardNumber = cardNumber;
-//  }
-//
-//  public int getExpiryMonth() {
-//    return expiryMonth;
-//  }
-//
-//  public void setExpiryMonth(int expiryMonth) {
-//    this.expiryMonth = expiryMonth;
-//  }
-//
-//  public int getExpiryYear() {
-//    return expiryYear;
-//  }
-//
-//  public void setExpiryYear(int expiryYear) {
-//    this.expiryYear = expiryYear;
-//  }
-//
-//  public String getCurrency() {
-//    return currency;
-//  }
-//
-//  public void setCurrency(String currency) {
-//    this.currency = currency;
-//  }
-//
-//  public int getAmount() {
-//    return amount;
-//  }
-//
-//  public void setAmount(int amount) {
-//    this.amount = amount;
-//  }
-//
-//  public String getCvv() {
-//    return cvv;
-//  }
-//
-//  public void setCvv(String cvv) {
-//    this.cvv = cvv;
-//  }
-//
-//  @JsonProperty("expiry_date")
-//  public String getExpiryDate() {
-//    return String.format("%d/%d", expiryMonth, expiryYear);
-//  }
-//
-//  @Override
-//  public String toString() {
-//    return "PostPaymentRequest{" +
-//        "cardNumberLastFour=" + cardNumber +
-//        ", expiryMonth=" + expiryMonth +
-//        ", expiryYear=" + expiryYear +
-//        ", currency='" + currency + '\'' +
-//        ", amount=" + amount +
-//        ", cvv=" + cvv +
-//        '}';
-//  }
 }
