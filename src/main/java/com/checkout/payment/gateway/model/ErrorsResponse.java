@@ -2,9 +2,10 @@ package com.checkout.payment.gateway.model;
 
 import lombok.Builder;
 import lombok.Data;
+import java.util.List;
 
 @Data
 @Builder
-public class ErrorResponse {
-  private final String message;
+public class ErrorsResponse {
+  private List<String> errors;
 }

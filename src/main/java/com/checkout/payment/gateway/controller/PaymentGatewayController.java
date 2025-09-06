@@ -1,6 +1,6 @@
 package com.checkout.payment.gateway.controller;
 
-import com.checkout.payment.gateway.exception.PaymentRequestValiationException;
+import com.checkout.payment.gateway.exception.PaymentRequestValidationException;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.service.PaymentGatewayService;
@@ -39,19 +39,18 @@ public class PaymentGatewayController {
   }
 
   @PostMapping
+  // TODO: validate idempotency key header
   public ResponseEntity<PostPaymentResponse> postPayment(
       @Valid @RequestBody PostPaymentRequest request) {
     LOG.debug("Received payment request {}", request);
 
     if (!ALLOWED_CURRENCIES.contains(request.getCurrency())) {
-      throw new PaymentRequestValiationException(
-          "Currency must be one of: " + ALLOWED_CURRENCIES
-      );
+      throw new PaymentRequestValidationException("Currency must be one of: " + ALLOWED_CURRENCIES);
     }
 
     YearMonth expiry = YearMonth.of(request.getExpiryYear(), request.getExpiryMonth());
     if (expiry.isBefore(YearMonth.now())) {
-      throw new PaymentRequestValiationException("Card expiry date must be in the future");
+      throw new PaymentRequestValidationException("Card expiry date must be in the future");
     }
 
     PostPaymentResponse response = paymentGatewayService.processPayment(request);

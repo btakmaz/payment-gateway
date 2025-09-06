@@ -1,6 +1,7 @@
 package com.checkout.payment.gateway.exception;
 
 import com.checkout.payment.gateway.model.ErrorResponse;
+import com.checkout.payment.gateway.model.ErrorsResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -16,9 +17,11 @@ public class CommonExceptionHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(CommonExceptionHandler.class);
 
-  @ExceptionHandler(PaymentRequestValiationException.class)
-  public ResponseEntity<ErrorResponse> handleResponseStatusException(PaymentRequestValiationException ex) {
-    var errorResponse = ErrorResponse.builder()
+  @ExceptionHandler(PaymentRequestValidationException.class)
+  public ResponseEntity<ErrorsResponse> handleResponseStatusException(
+      PaymentRequestValidationException ex) {
+    LOG.error("Exception happened", ex);
+    var errorResponse = ErrorsResponse.builder()
         .errors(List.of(ex.getMessage()))
         .build();
     return ResponseEntity
@@ -27,20 +30,29 @@ public class CommonExceptionHandler {
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
-  public ResponseEntity<ErrorResponse> handle(MethodArgumentNotValidException ex) {
-
+  public ResponseEntity<ErrorsResponse> handle(MethodArgumentNotValidException ex) {
+    LOG.error("Exception happened", ex);
     List<String> errors = ex.getBindingResult()
         .getFieldErrors()
         .stream()
         .map(FieldError::getDefaultMessage)
         .toList();
 
-    var errorResponse = ErrorResponse.builder()
+    var errorResponse = ErrorsResponse.builder()
         .errors(errors)
         .build();
 
     HttpStatus status = HttpStatus.UNPROCESSABLE_ENTITY;
 
     return ResponseEntity.status(status).body(errorResponse);
+  }
+
+  @ExceptionHandler(PaymentNotFoundException.class)
+  public ResponseEntity<ErrorResponse> handle(PaymentNotFoundException ex) {
+    LOG.error("Exception happened", ex);
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(ErrorResponse.builder()
+            .message("Payment not found")
+            .build());
   }
 }

@@ -14,6 +14,7 @@ public class BankClient {
 
   BankClient(
       @Value("${bank.base-url}") String baseUrl,
+      // TODO: use from configuration
       RestTemplateBuilder builder
   ) {
     this.baseUrl = baseUrl;
