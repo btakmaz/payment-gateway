@@ -1,8 +1,12 @@
 package com.checkout.payment.gateway.controller;
 
+import com.checkout.payment.gateway.exception.PaymentRequestValiationException;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.service.PaymentGatewayService;
+import java.time.YearMonth;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -19,7 +23,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/payments")
 public class PaymentGatewayController {
+
   private static final Logger LOG = LoggerFactory.getLogger(PaymentGatewayController.class);
+  private static final List<String> ALLOWED_CURRENCIES = Arrays.asList("USD", "EUR", "GBP");
 
   private final PaymentGatewayService paymentGatewayService;
 
@@ -33,8 +39,21 @@ public class PaymentGatewayController {
   }
 
   @PostMapping
-  public ResponseEntity<PostPaymentResponse> postPayment(@Valid @RequestBody PostPaymentRequest request) {
-    LOG.info("Received payment request {}", request);
+  public ResponseEntity<PostPaymentResponse> postPayment(
+      @Valid @RequestBody PostPaymentRequest request) {
+    LOG.debug("Received payment request {}", request);
+
+    if (!ALLOWED_CURRENCIES.contains(request.getCurrency())) {
+      throw new PaymentRequestValiationException(
+          "Currency must be one of: " + ALLOWED_CURRENCIES
+      );
+    }
+
+    YearMonth expiry = YearMonth.of(request.getExpiryYear(), request.getExpiryMonth());
+    if (expiry.isBefore(YearMonth.now())) {
+      throw new PaymentRequestValiationException("Card expiry date must be in the future");
+    }
+
     PostPaymentResponse response = paymentGatewayService.processPayment(request);
     return new ResponseEntity<>(response, HttpStatus.CREATED);
   }

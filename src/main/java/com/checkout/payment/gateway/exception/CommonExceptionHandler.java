@@ -16,6 +16,16 @@ public class CommonExceptionHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(CommonExceptionHandler.class);
 
+  @ExceptionHandler(PaymentRequestValiationException.class)
+  public ResponseEntity<ErrorResponse> handleResponseStatusException(PaymentRequestValiationException ex) {
+    var errorResponse = ErrorResponse.builder()
+        .errors(List.of(ex.getMessage()))
+        .build();
+    return ResponseEntity
+        .status(HttpStatus.UNPROCESSABLE_ENTITY)
+        .body(errorResponse);
+  }
+
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ErrorResponse> handle(MethodArgumentNotValidException ex) {
 
