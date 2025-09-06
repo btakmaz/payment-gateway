@@ -1,15 +1,23 @@
 package com.checkout.payment.gateway.controller;
 
-import com.checkout.payment.gateway.client.model.PostPaymentResponse;
+import com.checkout.payment.gateway.Utils;
+import com.checkout.payment.gateway.enums.PaymentStatus;
+import com.checkout.payment.gateway.model.Payment;
+import com.checkout.payment.gateway.model.PostPaymentResponse;
+import com.checkout.payment.gateway.model.IdempotencyStoreEntry;
+import com.checkout.payment.gateway.model.PaymentRequestStatus;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
+import com.checkout.payment.gateway.repository.IdempotencyStoreRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 import com.checkout.payment.gateway.repository.PaymentsRepository;
@@ -31,12 +39,9 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
-
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
-@AutoConfigureMockMvc
+//@AutoConfigureMockMvc
 class PaymentGatewayControllerTest {
 
   private static final Faker faker = new Faker();
@@ -60,6 +65,11 @@ class PaymentGatewayControllerTest {
   void setUp() {
     RestAssured.port = port;
   }
+
+  @Autowired
+  PaymentsRepository paymentsRepository;
+  @Autowired
+  IdempotencyStoreRepository idempotencyStoreRepository;
 
   @Test
   void shouldReturn422WhenRequestIsNotValid() throws Exception {
@@ -172,6 +182,93 @@ class PaymentGatewayControllerTest {
   }
 
   @Test
+  void shouldReturn422WhenRequestBodyNotMatch() throws Exception {
+    YearMonth now = YearMonth.now();
+    var idempotencyKey = UUID.randomUUID();
+
+    var requestBuilder = PostPaymentRequest.builder()
+        .amount(10025)
+        .cardNumber(CardNumberGenerator.generateCardNumber(14))
+        .expiryMonth(now.getMonthValue())
+        .expiryYear(now.getYear())
+        .currency("EUR");
+
+    idempotencyStoreRepository.add(IdempotencyStoreEntry.builder()
+        .idempotencyKey(idempotencyKey)
+        .request(requestBuilder.cvv("123").build())
+        .status(PaymentRequestStatus.SUCCESS)
+        .build()
+    );
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(requestBuilder.cvv("345").build())
+        .header("Idempotency-Key", idempotencyKey)
+        .when()
+        .post("/payments")
+        .then()
+        .log().all()
+        .statusCode(422)
+        .body("message", is(
+            "Idempotency key already used with different request"
+        ));
+  }
+
+  @Test
+  void shouldReturn201WhenRequestBodyMatches() {
+    YearMonth now = YearMonth.now();
+    var cardNumber = CardNumberGenerator.generateCardNumber(14);
+    var cardNumberLastFour = Utils.getCardNumberLastFour(cardNumber);
+    var idempotencyKey = UUID.randomUUID();
+    var currency = "EUR";
+    var amount = 10025;
+    var cvv = "123";
+
+    var request = PostPaymentRequest.builder()
+        .amount(amount)
+        .cardNumber(cardNumber)
+        .expiryMonth(now.getMonthValue())
+        .expiryYear(now.getYear())
+        .currency(currency)
+        .cvv(cvv)
+        .build();
+
+    var response = PostPaymentResponse.builder()
+        .id(UUID.randomUUID())
+        .expiryYear(now.getYear())
+        .amount(amount)
+        .expiryMonth(now.getMonthValue())
+        .cardNumberLastFour(cardNumberLastFour)
+        .currency(currency)
+        .status(PaymentStatus.AUTHORIZED)
+        .build();
+
+    idempotencyStoreRepository.add(IdempotencyStoreEntry.builder()
+        .idempotencyKey(idempotencyKey)
+        .request(request)
+            .response(response)
+        .status(PaymentRequestStatus.SUCCESS)
+        .build()
+    );
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(request)
+        .header("Idempotency-Key", idempotencyKey)
+        .when()
+        .post("/payments")
+        .then()
+        .statusCode(201)
+        .body("id", notNullValue())
+        .body("expiryYear", equalTo(now.getYear()))
+        .body("expiryMonth", equalTo(now.getMonthValue()))
+        .body("amount", equalTo(amount))
+        .body("cardNumberLastFour", equalTo(cardNumberLastFour))
+        .body("currency", equalTo(currency))
+        .body("status", equalTo(PaymentStatus.AUTHORIZED.getName()));
+  }
+
+  @Test
   void shouldCreatePayment() throws Exception {
     String currency = "EUR";
     int amount = 10025;
@@ -215,59 +312,46 @@ class PaymentGatewayControllerTest {
         .when()
         .post("/payments")
         .then()
+        .log().all()
         .statusCode(201);
   }
 
-//  @Autowired
-//  private MockMvc mvc;
-  @Autowired
-  PaymentsRepository paymentsRepository;
+  @Test
+  void whenPaymentExistsThen200IsReturned() throws Exception {
+    var paymentId = UUID.randomUUID();
+    var amount = 10025;
+    var currency = "EUR";
+    var expiryMonth = 12;
+    var expiryYear = 2025;
+    var cardNumber = CardNumberGenerator.generateCardNumber(14);
+    var cardNumberLastFour = Utils.getCardNumberLastFour(cardNumber);
 
-//  @Test
-//  void whenPaymentIsCreated() throws Exception {
-//    PostPaymentRequest request = new PostPaymentRequest();
-//    request.setCardNumber("4321");
-//    request.setExpiryMonth(12);
-//    request.setExpiryYear(2026);
-//    request.setCurrency("USD");
-//    request.setAmount(150);
-//    request.setCvv("123");
-//
-//    mvc.perform(MockMvcRequestBuilders.post("/payments")
-//            .contentType("application/json")
-//            .content(objectMapper.writeValueAsString(request)))
-//        .andExpect(status().isCreated())
-//        .andExpect(jsonPath("$.status").value("Authorized"))
-//        .andExpect(jsonPath("$.cardNumberLastFour").value(4321))
-//        .andExpect(jsonPath("$.expiryMonth").value(12))
-//        .andExpect(jsonPath("$.expiryYear").value(2026))
-//        .andExpect(jsonPath("$.currency").value("USD"))
-//        .andExpect(jsonPath("$.amount").value(150))
-//        .andExpect(jsonPath("$.id").exists());
-//  }
+    var payment = Payment.builder()
+        .id(paymentId)
+        .amount(amount)
+        .status(PaymentStatus.AUTHORIZED)
+        .currency(currency)
+        .cardNumberLastFour(cardNumberLastFour)
+        .expiryMonth(expiryMonth)
+        .expiryYear(expiryYear)
+        .build();
 
-//  @Test
-//  void whenPaymentWithIdExistThenCorrectPaymentIsReturned() throws Exception {
-//    PostPaymentResponse payment = new PostPaymentResponse();
-//    payment.setId(UUID.randomUUID());
-//    payment.setAmount(10);
-//    payment.setCurrency("USD");
-//    payment.setStatus(PaymentStatus.AUTHORIZED);
-//    payment.setExpiryMonth(12);
-//    payment.setExpiryYear(2024);
-//    payment.setCardNumberLastFour(4321);
-//
-//    paymentsRepository.add(payment);
-//
-//    mvc.perform(MockMvcRequestBuilders.get("/payment/" + payment.getId()))
-//        .andExpect(status().isOk())
-//        .andExpect(jsonPath("$.status").value(payment.getStatus().getName()))
-//        .andExpect(jsonPath("$.cardNumberLastFour").value(payment.getCardNumberLastFour()))
-//        .andExpect(jsonPath("$.expiryMonth").value(payment.getExpiryMonth()))
-//        .andExpect(jsonPath("$.expiryYear").value(payment.getExpiryYear()))
-//        .andExpect(jsonPath("$.currency").value(payment.getCurrency()))
-//        .andExpect(jsonPath("$.amount").value(payment.getAmount()));
-//  }
+    paymentsRepository.add(payment);
+
+    given()
+        .contentType(ContentType.JSON)
+        .when()
+        .get("/payments/{id}", paymentId)
+        .then()
+        .statusCode(200)
+        .body("id", equalTo(paymentId.toString()))
+        .body("expiryYear", equalTo(expiryYear))
+        .body("expiryMonth", equalTo(expiryMonth))
+        .body("amount", equalTo(amount))
+        .body("cardNumberLastFour", equalTo(cardNumberLastFour))
+        .body("currency", equalTo(currency))
+        .body("status", equalTo(PaymentStatus.AUTHORIZED.getName()));
+  }
 
   @Test
   void whenPaymentWithIdDoesNotExistThen404IsReturned() throws Exception {

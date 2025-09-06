@@ -15,6 +15,7 @@ public class PaymentMapper {
         .currency(payment.getCurrency())
         .expiryMonth(payment.getExpiryMonth())
         .expiryYear(payment.getExpiryYear())
+        .status(payment.getStatus())
         .build();
   }
 }

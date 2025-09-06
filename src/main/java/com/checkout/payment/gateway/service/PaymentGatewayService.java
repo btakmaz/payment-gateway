@@ -4,21 +4,23 @@ import com.checkout.payment.gateway.client.BankClient;
 import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.exception.PaymentNotFoundException;
 import com.checkout.payment.gateway.mapper.PaymentMapper;
+import com.checkout.payment.gateway.model.IdempotencyStoreEntry;
 import com.checkout.payment.gateway.model.Payment;
-import com.checkout.payment.gateway.model.PaymentRequestStatus;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
+import com.checkout.payment.gateway.repository.IdempotencyStoreRepository;
 import com.checkout.payment.gateway.repository.PaymentsRepository;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.commons.lang3.tuple.Pair;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
-import static com.checkout.payment.gateway.model.PaymentRequestStatus.FAILED;
 import static com.checkout.payment.gateway.model.PaymentRequestStatus.IN_PROGRESS;
 import static com.checkout.payment.gateway.model.PaymentRequestStatus.SUCCESS;
 
@@ -28,11 +30,14 @@ public class PaymentGatewayService {
   private static final Logger LOG = LoggerFactory.getLogger(PaymentGatewayService.class);
 
   private final PaymentsRepository paymentsRepository;
+  private final IdempotencyStoreRepository idempotencyStoreRepository;
   private final BankClient bankClient;
-  private final ConcurrentHashMap<UUID, Pair<UUID, PaymentRequestStatus>> idempotencyKeys = new ConcurrentHashMap<>();
 
-  public PaymentGatewayService(PaymentsRepository paymentsRepository, BankClient bankClient) {
+  private final ConcurrentHashMap<UUID, ReentrantLock> idempotencyLocks = new ConcurrentHashMap<>();
+
+  public PaymentGatewayService(PaymentsRepository paymentsRepository, IdempotencyStoreRepository idempotencyStoreRepository, BankClient bankClient) {
     this.paymentsRepository = paymentsRepository;
+    this.idempotencyStoreRepository = idempotencyStoreRepository;
     this.bankClient = bankClient;
   }
 
@@ -43,19 +48,45 @@ public class PaymentGatewayService {
         .orElseThrow(() -> new PaymentNotFoundException("Invalid ID"));
   }
 
-  public PostPaymentResponse processPayment(UUID idempotencyKey, PostPaymentRequest paymentRequest) {
-    var result = idempotencyKeys.compute(idempotencyKey, (key, existing) -> {
-      // TODO: handle here
-      if (existing != null) {
-        switch (existing.getValue()) {
-          case SUCCESS -> {
-            return existing;
-          }
-          case IN_PROGRESS -> throw new IllegalStateException("Already in progress");
-          case FAILED -> {
-          }
+  public PostPaymentResponse processPayment(
+      UUID idempotencyKey,
+      PostPaymentRequest paymentRequest) {
+
+    var idempotencyLock = idempotencyLocks.computeIfAbsent(idempotencyKey,
+        k -> new ReentrantLock());
+
+    idempotencyLock.lock();
+
+    try {
+      var existingIdempotencyStoreEntry = idempotencyStoreRepository.get(idempotencyKey);
+
+      if (existingIdempotencyStoreEntry != null) {
+        if (!existingIdempotencyStoreEntry.getRequest().equals(paymentRequest)) {
+          throw new ResponseStatusException(
+              HttpStatus.UNPROCESSABLE_ENTITY,
+              "Idempotency key already used with different request"
+          );
+        }
+
+        if (existingIdempotencyStoreEntry.getStatus() == SUCCESS) {
+          return existingIdempotencyStoreEntry.getResponse();
+        }
+
+        if (existingIdempotencyStoreEntry.getStatus() == IN_PROGRESS) {
+          throw new ResponseStatusException(
+              HttpStatus.CONFLICT,
+              "Request is already in progress"
+          );
         }
       }
+
+      var inProgressIdempotencyStoreEntry = IdempotencyStoreEntry.builder()
+          .idempotencyKey(idempotencyKey)
+          .request(paymentRequest)
+          .status(IN_PROGRESS)
+          .build();
+
+      idempotencyStoreRepository.add(inProgressIdempotencyStoreEntry);
 
       UUID paymentId = UUID.randomUUID();
 
@@ -65,7 +96,6 @@ public class PaymentGatewayService {
       );
       DateTimeFormatter expiryDateFormatter = DateTimeFormatter.ofPattern("MM/yyyy");
 
-      LOG.info("Calling bank");
       var postPaymentBankResponse = bankClient.postPayment(
           com.checkout.payment.gateway.client.model.PostPaymentRequest.builder()
               .amount(paymentRequest.getAmount())
@@ -76,7 +106,7 @@ public class PaymentGatewayService {
 
       LOG.info("Payment processed successfully {}", postPaymentBankResponse);
 
-      paymentsRepository.add(Payment.builder()
+      var payment = paymentsRepository.add(Payment.builder()
           .cardNumberLastFour(paymentRequest.getCardNumber())
           .id(paymentId)
           .amount(paymentRequest.getAmount())
@@ -87,12 +117,19 @@ public class PaymentGatewayService {
           .build()
       );
 
-      return Pair.of(paymentId, SUCCESS);
-    });
+      var idempotencyStoreEntry = IdempotencyStoreEntry.builder()
+          .idempotencyKey(idempotencyKey)
+          .request(paymentRequest)
+          .status(SUCCESS)
+          .response(PaymentMapper.toResponse(payment))
+          .build();
 
-    return paymentsRepository.get(result.getKey())
-        .map(PaymentMapper::toResponse)
-        .orElseThrow(() -> new PaymentNotFoundException("Invalid ID"));
+      idempotencyStoreRepository.add(idempotencyStoreEntry);
 
+      return idempotencyStoreEntry.getResponse();
+
+    } finally {
+      idempotencyLock.unlock();
+    }
   }
 }

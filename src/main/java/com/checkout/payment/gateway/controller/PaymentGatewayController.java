@@ -40,7 +40,6 @@ public class PaymentGatewayController {
   }
 
   @PostMapping
-  // TODO: validate idempotency key header
   public ResponseEntity<PostPaymentResponse> postPayment(
       @Valid @RequestHeader("Idempotency-Key") UUID idempotencyKey,
       @Valid @RequestBody PostPaymentRequest request) {

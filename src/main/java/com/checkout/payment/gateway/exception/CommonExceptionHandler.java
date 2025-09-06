@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 @ControllerAdvice
@@ -53,6 +54,15 @@ public class CommonExceptionHandler {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(ErrorResponse.builder()
             .message("Payment not found")
+            .build());
+  }
+
+  @ExceptionHandler(ResponseStatusException.class)
+  public ResponseEntity<ErrorResponse> handle(ResponseStatusException ex) {
+    LOG.error("Exception happened", ex);
+    return ResponseEntity.status(ex.getStatusCode())
+        .body(ErrorResponse.builder()
+            .message(ex.getReason())
             .build());
   }
 }
