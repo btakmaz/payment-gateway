@@ -1,6 +1,6 @@
 package com.checkout.payment.gateway.controller;
 
-import com.checkout.payment.gateway.client.model.PostPaymentResponseBuilder;
+import com.checkout.payment.gateway.client.model.PostPaymentResponse;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -14,6 +14,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 
 import com.checkout.payment.gateway.repository.PaymentsRepository;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import com.github.javafaker.Faker;
 import com.github.tomakehurst.wiremock.client.WireMock;
@@ -65,6 +66,7 @@ class PaymentGatewayControllerTest {
     given()
         .contentType(ContentType.JSON)
         .body(PostPaymentRequest.builder().build())
+        .header("Idempotency-Key", UUID.randomUUID())
         .when()
         .post("/payments")
         .then()
@@ -82,6 +84,7 @@ class PaymentGatewayControllerTest {
         .body(PostPaymentRequest.builder()
             .cardNumber("0")
             .build())
+        .header("Idempotency-Key", UUID.randomUUID())
         .when()
         .post("/payments")
         .then()
@@ -95,6 +98,7 @@ class PaymentGatewayControllerTest {
         .body(PostPaymentRequest.builder()
             .cvv("12345")
             .build())
+        .header("Idempotency-Key", UUID.randomUUID())
         .when()
         .post("/payments")
         .then()
@@ -108,6 +112,7 @@ class PaymentGatewayControllerTest {
         .body(PostPaymentRequest.builder()
             .currency("FOUR")
             .build())
+        .header("Idempotency-Key", UUID.randomUUID())
         .when()
         .post("/payments")
         .then()
@@ -131,6 +136,7 @@ class PaymentGatewayControllerTest {
             .currency("EUR")
             .cvv("123")
             .build())
+        .header("Idempotency-Key", UUID.randomUUID())
         .when()
         .post("/payments")
         .then()
@@ -154,6 +160,7 @@ class PaymentGatewayControllerTest {
             .currency("JPY")
             .cvv("123")
             .build())
+        .header("Idempotency-Key", UUID.randomUUID())
         .when()
         .post("/payments")
         .then()
@@ -167,17 +174,26 @@ class PaymentGatewayControllerTest {
   @Test
   void shouldCreatePayment() throws Exception {
     String currency = "EUR";
-    String amount = "10025";
+    int amount = 10025;
     String cvv = "123";
+    String cardNumber = CardNumberGenerator.generateCardNumber(14);
+    YearMonth now = YearMonth.now();
+    DateTimeFormatter expiryDateFormatter = DateTimeFormatter.ofPattern("MM/yyyy");
 
     wireMock.stubFor(
-        WireMock.get(urlMatching("/payments"))
+        WireMock.post(urlMatching("/payments"))
+            .withRequestBody(WireMock.equalToJson(objectMapper.writeValueAsString(com.checkout.payment.gateway.client.model.PostPaymentRequest.builder()
+                .expiryDate(now.format(expiryDateFormatter))
+                .amount(amount)
+                .currency(currency)
+                .cvv(cvv)
+                .build())))
             .willReturn(
                 aResponse()
                     .withHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                     .withStatus(200)
                     .withBody(
-                        objectMapper.writeValueAsString(PostPaymentResponseBuilder.builder()
+                        objectMapper.writeValueAsString(com.checkout.payment.gateway.client.model.PostPaymentResponse.builder()
                             .authorizationCode("auth_code")
                             .authorized(true)
                             .build())
@@ -188,12 +204,18 @@ class PaymentGatewayControllerTest {
     given()
         .contentType(ContentType.JSON)
         .body(PostPaymentRequest.builder()
+            .amount(amount)
+            .cardNumber(cardNumber)
+            .expiryMonth(now.getMonthValue())
+            .expiryYear(now.getYear())
             .currency(currency)
+            .cvv(cvv)
             .build())
+        .header("Idempotency-Key", UUID.randomUUID())
         .when()
         .post("/payments")
         .then()
-        .statusCode(200);
+        .statusCode(201);
   }
 
 //  @Autowired

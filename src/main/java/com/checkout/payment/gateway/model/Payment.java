@@ -7,7 +7,7 @@ import java.util.UUID;
 
 @Data
 @Builder
-public class PostPaymentResponse {
+public class Payment {
   private UUID id;
   private PaymentStatus status;
   private String cardNumberLastFour;
