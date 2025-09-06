@@ -1,0 +1,14 @@
+
+###
+POST http://localhost:8080/payments
+Content-Type: application/json
+
+{
+  "card_number": "124",
+  "expiry_date": "expiry_date",
+  "currency": "GBP",
+  "amount": 12500,
+  "cvv": 123
+}
+
+###

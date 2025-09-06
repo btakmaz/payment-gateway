@@ -1,5 +1,6 @@
 package com.checkout.payment.gateway.service;
 
+import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.exception.EventProcessingException;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
@@ -25,7 +26,17 @@ public class PaymentGatewayService {
     return paymentsRepository.get(id).orElseThrow(() -> new EventProcessingException("Invalid ID"));
   }
 
-  public UUID processPayment(PostPaymentRequest paymentRequest) {
-    return UUID.randomUUID();
+  public PostPaymentResponse processPayment(PostPaymentRequest paymentRequest) {
+    UUID id = UUID.randomUUID();
+    PostPaymentResponse response = new PostPaymentResponse();
+    response.setId(id);
+    response.setAmount(paymentRequest.getAmount());
+    response.setCurrency(paymentRequest.getCurrency());
+    response.setExpiryMonth(paymentRequest.getExpiryMonth());
+    response.setExpiryYear(paymentRequest.getExpiryYear());
+    response.setCardNumberLastFour(paymentRequest.getCardNumberLastFour());
+    response.setStatus(PaymentStatus.AUTHORIZED);
+    paymentsRepository.add(response);
+    return response;
   }
 }
