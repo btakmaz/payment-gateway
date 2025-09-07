@@ -1,11 +1,10 @@
 package com.checkout.payment.gateway.controller;
 
 import com.checkout.payment.gateway.Utils;
-import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.model.Payment;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.model.IdempotencyStoreEntry;
-import com.checkout.payment.gateway.model.PaymentRequestStatus;
+import com.checkout.payment.gateway.enums.PaymentRequestStatus;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.repository.IdempotencyStoreRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;

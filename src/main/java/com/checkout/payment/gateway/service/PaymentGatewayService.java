@@ -24,9 +24,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.server.ResponseStatusException;
 
-import static com.checkout.payment.gateway.model.PaymentRequestStatus.FAILED;
-import static com.checkout.payment.gateway.model.PaymentRequestStatus.IN_PROGRESS;
-import static com.checkout.payment.gateway.model.PaymentRequestStatus.SUCCESS;
+import static com.checkout.payment.gateway.enums.PaymentRequestStatus.FAILED;
+import static com.checkout.payment.gateway.enums.PaymentRequestStatus.IN_PROGRESS;
+import static com.checkout.payment.gateway.enums.PaymentRequestStatus.SUCCESS;
 
 @Service
 public class PaymentGatewayService {

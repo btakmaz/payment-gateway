@@ -1,4 +1,4 @@
-package com.checkout.payment.gateway.model;
+package com.checkout.payment.gateway.enums;
 
 public enum PaymentRequestStatus {
   IN_PROGRESS,
