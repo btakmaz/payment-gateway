@@ -44,3 +44,11 @@ Request validation is done with Bean Validation, e.g.:
 ```
 
 A custom validation for the future expiry date or a currency list is done in the controller layer. 
+
+## Further improvements
+
+The exception handling around the bank API calls is rather basic and should be improved later, also it's worth to distinguish between retriable and non-retriable errors:
+- for example, if bank API is down we can retry 
+- if the bank details are not correct, it doesn't make sense to retry, should be a new request with different details and idempotency key 
+
+I've left that out of scope for the initial version.
