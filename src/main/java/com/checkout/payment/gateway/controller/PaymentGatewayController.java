@@ -4,6 +4,7 @@ import com.checkout.payment.gateway.exception.PaymentRequestValidationException;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.service.PaymentGatewayService;
+import java.net.URI;
 import java.time.YearMonth;
 import java.util.Arrays;
 import java.util.List;
@@ -12,6 +13,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,6 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class PaymentGatewayController {
 
   private static final Logger LOG = LoggerFactory.getLogger(PaymentGatewayController.class);
+
+  // A short list of supported currencies is hard-coded for now:
+  // obviously should be moved to configuration or some kind of storage (e.g. database).
   private static final List<String> ALLOWED_CURRENCIES = Arrays.asList("USD", "EUR", "GBP");
 
   private final PaymentGatewayService paymentGatewayService;
@@ -34,7 +39,7 @@ public class PaymentGatewayController {
     this.paymentGatewayService = paymentGatewayService;
   }
 
-  @GetMapping("/{id}")
+  @GetMapping( "/{id}")
   public ResponseEntity<PostPaymentResponse> getPaymentById(@PathVariable UUID id) {
     return new ResponseEntity<>(paymentGatewayService.getPaymentById(id), HttpStatus.OK);
   }
@@ -55,6 +60,13 @@ public class PaymentGatewayController {
     }
 
     PostPaymentResponse response = paymentGatewayService.processPayment(idempotencyKey, request);
-    return new ResponseEntity<>(response, HttpStatus.CREATED);
+
+    if (response == null) {
+      return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+    }
+
+    return ResponseEntity.created(URI.create("/payments/" + response.getId()))
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(response);
   }
 }

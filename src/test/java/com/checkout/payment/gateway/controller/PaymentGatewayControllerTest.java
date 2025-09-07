@@ -10,6 +10,8 @@ import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.repository.IdempotencyStoreRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import static com.checkout.payment.gateway.enums.PaymentStatus.AUTHORIZED;
+import static com.checkout.payment.gateway.enums.PaymentStatus.DECLINED;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
@@ -18,13 +20,14 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 import com.checkout.payment.gateway.repository.PaymentsRepository;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
-import com.github.javafaker.Faker;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import io.restassured.RestAssured;
@@ -33,7 +36,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.MediaType;
@@ -41,10 +43,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
-//@AutoConfigureMockMvc
 class PaymentGatewayControllerTest {
 
-  private static final Faker faker = new Faker();
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   @LocalServerPort
@@ -158,7 +158,7 @@ class PaymentGatewayControllerTest {
   }
 
   @Test
-  void shouldReturn422WhenCurrencyIsNotSupported() throws Exception {
+  void shouldReturn422WhenCurrencyIsNotSupported() {
     YearMonth now = YearMonth.now();
     given()
         .contentType(ContentType.JSON)
@@ -240,7 +240,7 @@ class PaymentGatewayControllerTest {
         .expiryMonth(now.getMonthValue())
         .cardNumberLastFour(cardNumberLastFour)
         .currency(currency)
-        .status(PaymentStatus.AUTHORIZED)
+        .status(AUTHORIZED)
         .build();
 
     idempotencyStoreRepository.add(IdempotencyStoreEntry.builder()
@@ -265,23 +265,25 @@ class PaymentGatewayControllerTest {
         .body("amount", equalTo(amount))
         .body("cardNumberLastFour", equalTo(cardNumberLastFour))
         .body("currency", equalTo(currency))
-        .body("status", equalTo(PaymentStatus.AUTHORIZED.getName()));
+        .body("status", equalTo(AUTHORIZED.getName()));
   }
 
   @Test
-  void shouldCreatePayment() throws Exception {
+  void shouldCreatePaymentWithAuthorizedStatus() throws Exception {
     String currency = "EUR";
     int amount = 10025;
     String cvv = "123";
     String cardNumber = CardNumberGenerator.generateCardNumber(14);
     YearMonth now = YearMonth.now();
     DateTimeFormatter expiryDateFormatter = DateTimeFormatter.ofPattern("MM/yyyy");
+    var idempotencyKey = UUID.randomUUID();
 
     wireMock.stubFor(
         WireMock.post(urlMatching("/payments"))
             .withRequestBody(WireMock.equalToJson(objectMapper.writeValueAsString(com.checkout.payment.gateway.client.model.PostPaymentRequest.builder()
                 .expiryDate(now.format(expiryDateFormatter))
                 .amount(amount)
+                .cardNumber(cardNumber)
                 .currency(currency)
                 .cvv(cvv)
                 .build())))
@@ -298,26 +300,184 @@ class PaymentGatewayControllerTest {
             )
     );
 
-    given()
+    var request = PostPaymentRequest.builder()
+        .amount(amount)
+        .cardNumber(cardNumber)
+        .expiryMonth(now.getMonthValue())
+        .expiryYear(now.getYear())
+        .currency(currency)
+        .cvv(cvv)
+        .build();
+
+    var response = given()
         .contentType(ContentType.JSON)
-        .body(PostPaymentRequest.builder()
-            .amount(amount)
-            .cardNumber(cardNumber)
-            .expiryMonth(now.getMonthValue())
-            .expiryYear(now.getYear())
-            .currency(currency)
-            .cvv(cvv)
-            .build())
-        .header("Idempotency-Key", UUID.randomUUID())
+        .body(request)
+        .header("Idempotency-Key", idempotencyKey)
         .when()
         .post("/payments")
         .then()
         .log().all()
-        .statusCode(201);
+        .statusCode(201)
+        .extract()
+        .as(PostPaymentResponse.class);
+
+    assertNotNull(response.getId());
+    assertEquals(AUTHORIZED.getName(), response.getStatus().getName());
+    assertEquals(Utils.getCardNumberLastFour(cardNumber), response.getCardNumberLastFour());
+    assertEquals(now.getMonthValue(), response.getExpiryMonth());
+    assertEquals(now.getYear(), response.getExpiryYear());
+    assertEquals(currency, response.getCurrency());
+    assertEquals(amount, response.getAmount());
+
+    var idempotencyStoreEntry = idempotencyStoreRepository.get(idempotencyKey);
+
+    assertNotNull(idempotencyStoreEntry);
+    assertEquals(request, idempotencyStoreEntry.getRequest());
+    assertEquals(PaymentRequestStatus.SUCCESS, idempotencyStoreEntry.getStatus());
+
+    var payment = paymentsRepository.get(response.getId()).orElseThrow();
+    assertNotNull(payment);
+    assertEquals(AUTHORIZED.getName(), payment.getStatus().getName());
+    assertEquals(Utils.getCardNumberLastFour(cardNumber), payment.getCardNumberLastFour());
+    assertEquals(now.getMonthValue(), payment.getExpiryMonth());
+    assertEquals(now.getYear(), payment.getExpiryYear());
+    assertEquals(currency, payment.getCurrency());
+    assertEquals(amount, payment.getAmount());
   }
 
   @Test
-  void whenPaymentExistsThen200IsReturned() throws Exception {
+  void shouldCreatePaymentWithDeclinedStatus() throws Exception {
+    String currency = "EUR";
+    int amount = 10025;
+    String cvv = "123";
+    String cardNumber = CardNumberGenerator.generateCardNumber(14);
+    YearMonth now = YearMonth.now();
+    DateTimeFormatter expiryDateFormatter = DateTimeFormatter.ofPattern("MM/yyyy");
+    var idempotencyKey = UUID.randomUUID();
+
+    wireMock.stubFor(
+        WireMock.post(urlMatching("/payments"))
+            .withRequestBody(WireMock.equalToJson(objectMapper.writeValueAsString(com.checkout.payment.gateway.client.model.PostPaymentRequest.builder()
+                .expiryDate(now.format(expiryDateFormatter))
+                .amount(amount)
+                .cardNumber(cardNumber)
+                .currency(currency)
+                .cvv(cvv)
+                .build())))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                    .withStatus(200)
+                    .withBody(
+                        objectMapper.writeValueAsString(com.checkout.payment.gateway.client.model.PostPaymentResponse.builder()
+                            .authorizationCode("")
+                            .authorized(false)
+                            .build())
+                    )
+            )
+    );
+
+    var request = PostPaymentRequest.builder()
+        .amount(amount)
+        .cardNumber(cardNumber)
+        .expiryMonth(now.getMonthValue())
+        .expiryYear(now.getYear())
+        .currency(currency)
+        .cvv(cvv)
+        .build();
+
+    var response = given()
+        .contentType(ContentType.JSON)
+        .body(request)
+        .header("Idempotency-Key", idempotencyKey)
+        .when()
+        .post("/payments")
+        .then()
+        .log().all()
+        .statusCode(201)
+        .extract()
+        .as(PostPaymentResponse.class);
+
+    assertNotNull(response.getId());
+    assertEquals(DECLINED.getName(), response.getStatus().getName());
+    assertEquals(Utils.getCardNumberLastFour(cardNumber), response.getCardNumberLastFour());
+    assertEquals(now.getMonthValue(), response.getExpiryMonth());
+    assertEquals(now.getYear(), response.getExpiryYear());
+    assertEquals(currency, response.getCurrency());
+    assertEquals(amount, response.getAmount());
+
+    var idempotencyStoreEntry = idempotencyStoreRepository.get(idempotencyKey);
+
+    assertNotNull(idempotencyStoreEntry);
+    assertEquals(request, idempotencyStoreEntry.getRequest());
+    assertEquals(PaymentRequestStatus.SUCCESS, idempotencyStoreEntry.getStatus());
+
+    var payment = paymentsRepository.get(response.getId()).orElseThrow();
+    assertNotNull(payment);
+    assertEquals(DECLINED.getName(), payment.getStatus().getName());
+    assertEquals(Utils.getCardNumberLastFour(cardNumber), payment.getCardNumberLastFour());
+    assertEquals(now.getMonthValue(), payment.getExpiryMonth());
+    assertEquals(now.getYear(), payment.getExpiryYear());
+    assertEquals(currency, payment.getCurrency());
+    assertEquals(amount, payment.getAmount());
+  }
+
+  @Test
+  void shouldRecordAttemptWhenBankCallFail() throws Exception {
+    String currency = "EUR";
+    int amount = 10025;
+    String cvv = "123";
+    String cardNumber = CardNumberGenerator.generateCardNumber(14);
+    YearMonth now = YearMonth.now();
+    DateTimeFormatter expiryDateFormatter = DateTimeFormatter.ofPattern("MM/yyyy");
+    var idempotencyKey = UUID.randomUUID();
+
+    wireMock.stubFor(
+        WireMock.post(urlMatching("/payments"))
+            .withRequestBody(WireMock.equalToJson(objectMapper.writeValueAsString(com.checkout.payment.gateway.client.model.PostPaymentRequest.builder()
+                .expiryDate(now.format(expiryDateFormatter))
+                .amount(amount)
+                .cardNumber(cardNumber)
+                .currency(currency)
+                .cvv(cvv)
+                .build())))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                    .withStatus(503)
+            )
+    );
+
+    var request = PostPaymentRequest.builder()
+        .amount(amount)
+        .cardNumber(cardNumber)
+        .expiryMonth(now.getMonthValue())
+        .expiryYear(now.getYear())
+        .currency(currency)
+        .cvv(cvv)
+        .build();
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(request)
+        .header("Idempotency-Key", idempotencyKey)
+        .when()
+        .post("/payments")
+        .then()
+        .log().all()
+        .statusCode(503);
+
+    var idempotencyStoreEntry = idempotencyStoreRepository.get(idempotencyKey);
+
+    assertNotNull(idempotencyStoreEntry);
+    assertEquals(request, idempotencyStoreEntry.getRequest());
+    assertEquals(PaymentRequestStatus.FAILED, idempotencyStoreEntry.getStatus());
+
+    assertEquals(0, paymentsRepository.size());
+  }
+
+  @Test
+  void whenPaymentExistsThen200IsReturned() {
     var paymentId = UUID.randomUUID();
     var amount = 10025;
     var currency = "EUR";
@@ -329,7 +489,7 @@ class PaymentGatewayControllerTest {
     var payment = Payment.builder()
         .id(paymentId)
         .amount(amount)
-        .status(PaymentStatus.AUTHORIZED)
+        .status(AUTHORIZED)
         .currency(currency)
         .cardNumberLastFour(cardNumberLastFour)
         .expiryMonth(expiryMonth)
@@ -350,7 +510,7 @@ class PaymentGatewayControllerTest {
         .body("amount", equalTo(amount))
         .body("cardNumberLastFour", equalTo(cardNumberLastFour))
         .body("currency", equalTo(currency))
-        .body("status", equalTo(PaymentStatus.AUTHORIZED.getName()));
+        .body("status", equalTo(AUTHORIZED.getName()));
   }
 
   @Test

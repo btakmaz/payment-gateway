@@ -1,5 +1,6 @@
 package com.checkout.payment.gateway.service;
 
+import com.checkout.payment.gateway.Utils;
 import com.checkout.payment.gateway.client.BankClient;
 import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.exception.PaymentNotFoundException;
@@ -19,8 +20,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.server.ResponseStatusException;
 
+import static com.checkout.payment.gateway.model.PaymentRequestStatus.FAILED;
 import static com.checkout.payment.gateway.model.PaymentRequestStatus.IN_PROGRESS;
 import static com.checkout.payment.gateway.model.PaymentRequestStatus.SUCCESS;
 
@@ -80,13 +84,13 @@ public class PaymentGatewayService {
         }
       }
 
-      var inProgressIdempotencyStoreEntry = IdempotencyStoreEntry.builder()
+      var idempotencyStoreEntryBuilder = IdempotencyStoreEntry.builder()
           .idempotencyKey(idempotencyKey)
-          .request(paymentRequest)
-          .status(IN_PROGRESS)
-          .build();
+          .request(paymentRequest);
 
-      idempotencyStoreRepository.add(inProgressIdempotencyStoreEntry);
+      idempotencyStoreRepository.add(idempotencyStoreEntryBuilder
+          .status(IN_PROGRESS)
+          .build());
 
       UUID paymentId = UUID.randomUUID();
 
@@ -96,37 +100,44 @@ public class PaymentGatewayService {
       );
       DateTimeFormatter expiryDateFormatter = DateTimeFormatter.ofPattern("MM/yyyy");
 
-      var postPaymentBankResponse = bankClient.postPayment(
-          com.checkout.payment.gateway.client.model.PostPaymentRequest.builder()
-              .amount(paymentRequest.getAmount())
-              .expiryDate(expiryDate.format(expiryDateFormatter))
-              .cvv(paymentRequest.getCvv())
-              .currency(paymentRequest.getCurrency())
-              .build());
+      try {
+        var postPaymentBankResponse = bankClient.postPayment(
+            com.checkout.payment.gateway.client.model.PostPaymentRequest.builder()
+                .cardNumber(paymentRequest.getCardNumber())
+                .amount(paymentRequest.getAmount())
+                .expiryDate(expiryDate.format(expiryDateFormatter))
+                .cvv(paymentRequest.getCvv())
+                .currency(paymentRequest.getCurrency())
+                .build());
 
-      LOG.info("Payment processed successfully {}", postPaymentBankResponse);
+        LOG.info("Payment processed successfully {}", postPaymentBankResponse);
 
-      var payment = paymentsRepository.add(Payment.builder()
-          .cardNumberLastFour(paymentRequest.getCardNumber())
-          .id(paymentId)
-          .amount(paymentRequest.getAmount())
-          .currency(paymentRequest.getCurrency())
-          .expiryMonth(paymentRequest.getExpiryMonth())
-          .expiryYear(paymentRequest.getExpiryYear())
-          .status(PaymentStatus.AUTHORIZED)
-          .build()
-      );
+        var payment = Payment.builder()
+            .cardNumberLastFour(Utils.getCardNumberLastFour(paymentRequest.getCardNumber()))
+            .id(paymentId)
+            .amount(paymentRequest.getAmount())
+            .currency(paymentRequest.getCurrency())
+            .expiryMonth(paymentRequest.getExpiryMonth())
+            .expiryYear(paymentRequest.getExpiryYear())
+            .status(postPaymentBankResponse.getAuthorized() ? PaymentStatus.AUTHORIZED : PaymentStatus.DECLINED)
+            .build();
 
-      var idempotencyStoreEntry = IdempotencyStoreEntry.builder()
-          .idempotencyKey(idempotencyKey)
-          .request(paymentRequest)
-          .status(SUCCESS)
-          .response(PaymentMapper.toResponse(payment))
-          .build();
+        var idempotencyStoreEntry = idempotencyStoreEntryBuilder
+            .status(SUCCESS)
+            .response(PaymentMapper.toResponse(payment))
+            .build();
 
-      idempotencyStoreRepository.add(idempotencyStoreEntry);
+        paymentsRepository.add(payment);
+        idempotencyStoreRepository.add(idempotencyStoreEntry);
 
-      return idempotencyStoreEntry.getResponse();
+        return idempotencyStoreEntry.getResponse();
+
+      } catch (HttpClientErrorException | HttpServerErrorException ex) {
+        idempotencyStoreRepository.add(idempotencyStoreEntryBuilder
+            .status(FAILED)
+            .build());
+        return null;
+      }
 
     } finally {
       idempotencyLock.unlock();

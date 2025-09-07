@@ -26,7 +26,6 @@ dependencies {
   testImplementation 'io.rest-assured:rest-assured'
   testImplementation 'org.wiremock:wiremock-standalone:3.6.0'
   testImplementation 'org.wiremock.integrations.testcontainers:wiremock-testcontainers-module:1.0-alpha-13'
-  testImplementation 'com.github.javafaker:javafaker:1.0.2'
 }
 
 tasks.named('test') {

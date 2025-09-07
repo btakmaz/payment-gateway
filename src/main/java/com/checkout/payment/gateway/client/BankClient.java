@@ -11,6 +11,7 @@ import org.springframework.web.client.RestTemplate;
 
 @Component
 public class BankClient {
+
   private final String baseUrl;
   private final RestTemplate restTemplate;
   private static final Logger LOG = LoggerFactory.getLogger(BankClient.class);

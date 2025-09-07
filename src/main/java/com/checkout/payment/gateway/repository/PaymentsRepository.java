@@ -11,11 +11,15 @@ public class PaymentsRepository {
 
   private final ConcurrentHashMap<UUID, Payment> payments = new ConcurrentHashMap<>();
 
-  public Payment add(Payment payment) {
-    return payments.put(payment.getId(), payment);
+  public void add(Payment payment) {
+    payments.put(payment.getId(), payment);
   }
 
   public Optional<Payment> get(UUID id) {
     return Optional.ofNullable(payments.get(id));
+  }
+
+  public int size() {
+    return payments.size();
   }
 }
