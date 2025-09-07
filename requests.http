@@ -1,14 +1,56 @@
-
-###
-POST http://localhost:8080/payments
+### Should return 422 with validation errors
+POST http://localhost:8090/payments
 Content-Type: application/json
+Idempotency-Key: 0123412f-73ff-44b9-80dc-92a782953720
 
 {
-  "card_number": "124",
-  "expiry_date": "expiry_date",
-  "currency": "GBP",
-  "amount": 12500,
-  "cvv": 123
+
 }
 
-###
+### Should return 503 as card number ends with 0
+POST http://localhost:8090/payments
+Content-Type: application/json
+Idempotency-Key: 0123412f-73ff-44b9-80dc-92a782953728
+
+{
+  "card_number": "76159815000800",
+  "expiry_month": 10,
+  "expiry_year": 2026,
+  "currency": "GBP",
+  "amount": 12500,
+  "cvv": "123"
+}
+
+### Should return 200 and declined payment (card ends with even number)
+POST http://localhost:8090/payments
+Content-Type: application/json
+Idempotency-Key: 0123412f-73ff-44b9-80dc-92a782953723
+
+{
+  "card_number": "76159815000802",
+  "expiry_month": 10,
+  "expiry_year": 2026,
+  "currency": "GBP",
+  "amount": 12500,
+  "cvv": "123"
+}
+
+### Should return payment (use payment id from previous call)
+GET http://localhost:8090/payments/653017d3-4f89-4614-a1f5-7bb58150a5d0
+
+### Should return 200 and authorized payment (card ends with odd number)
+POST http://localhost:8090/payments
+Content-Type: application/json
+Idempotency-Key: 0123412f-73ff-44b9-80dc-92a782953724
+
+{
+  "card_number": "76159815000801",
+  "expiry_month": 10,
+  "expiry_year": 2026,
+  "currency": "GBP",
+  "amount": 12500,
+  "cvv": "123"
+}
+
+### Should return payment (use payment id from previous call)
+GET http://localhost:8090/payments/2846b3c6-5b39-46ca-8b5e-5a22cd31dd29
