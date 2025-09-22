@@ -34,10 +34,6 @@ class PaymentGatewayControllerTest {
   @MockBean
   private PaymentGatewayService paymentGatewayService;
 
-  @BeforeEach
-  void setUp() {
-  }
-
   @ParameterizedTest
   @EnumSource(value = PaymentStatus.class, names = {"AUTHORIZED", "DECLINED"})
   void whenPaymentsExistThenCorrectDetailsAreReturned(PaymentStatus status) throws Exception {
