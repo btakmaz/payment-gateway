@@ -74,7 +74,7 @@ class PaymentGatewayIntegrationTest {
     ResponseEntity<PostPaymentResponse> response = restTemplate.postForEntity(
         "/payments", request, PostPaymentResponse.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     assertThat(response.getBody().status()).isEqualTo(PaymentStatus.AUTHORIZED);
     assertThat(response.getBody().id()).isNotNull();
     assertThat(response.getBody().cardNumberLastFour()).isEqualTo("3451");
@@ -89,7 +89,7 @@ class PaymentGatewayIntegrationTest {
     ResponseEntity<PostPaymentResponse> response = restTemplate.postForEntity(
         "/payments", request, PostPaymentResponse.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     assertThat(response.getBody().status()).isEqualTo(PaymentStatus.DECLINED);
     assertThat(response.getBody().id()).isNotNull();
     assertThat(response.getBody().cardNumberLastFour()).isEqualTo("3452");

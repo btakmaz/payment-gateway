@@ -227,7 +227,7 @@ class PaymentGatewayControllerTest {
       mvc.perform(MockMvcRequestBuilders.post("/payments")
               .contentType(MediaType.APPLICATION_JSON)
               .content(validCurrencyJson))
-          .andExpect(status().isOk())
+          .andExpect(status().isCreated())
           .andExpect(jsonPath("$.status").value("Authorized"))
           .andExpect(jsonPath("$.currency").value(currency));
     }

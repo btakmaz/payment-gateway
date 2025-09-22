@@ -32,6 +32,6 @@ public class PaymentGatewayController {
   public ResponseEntity<PostPaymentResponse> postPaymentEvent(@Valid @RequestBody PostPaymentRequest request) {
     PostPaymentResponse resp =  paymentGatewayService.processPayment(request);
 
-    return new ResponseEntity<>(resp, HttpStatus.OK);
+    return new ResponseEntity<>(resp, HttpStatus.CREATED);
   }
 }
