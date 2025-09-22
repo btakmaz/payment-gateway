@@ -1,3 +1,25 @@
+
+## Project Overview
+
+### Architecture
+- **Controller**: `PaymentGatewayController` - REST endpoints for payment operations
+- **Service**: `PaymentGatewayService` - Business logic for payment processing
+- **Domain**: `Payment`, `PaymentStatus` - Domain models
+- **Infrastructure**:
+  - `BankClient` - External bank service integration
+  - `InMemoryPaymentsRepository` - Data persistence
+- **DTOs**: Request/Response objects for Rest API communication
+- **Exception Handling**: Custom exceptions and global error handler
+
+## Running Tests
+### Run all tests
+./gradlew test
+
+### Run specific tests
+./gradlew test --tests "PaymentGatewayControllerTest"
+./gradlew test --tests "PaymentGatewayIntegrationTest"
+
+-----------
 # Instructions for candidates
 
 This is the Java version of the Payment Gateway challenge. If you haven't already read this [README.md](https://github.com/cko-recruitment/) on the details of this exercise, please do so now.
